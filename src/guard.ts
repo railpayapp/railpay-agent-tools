@@ -13,15 +13,26 @@ export const DEFAULT_MAX_PER_CALL = "0.1";
  */
 export type PaymentStatus = "settled" | "pending" | "unconfirmed" | "unknown";
 
-/** A payment that went out. Every status counts against the session budget. */
-export type PaymentInfo = {
+/** One payment made in this session. Every status counts against the session budget. */
+export type PaymentRecord = {
+  /** `pay_1`, `pay_2`, … in the order the payments were made. */
+  id: string;
+  tool: "railpay_fetch" | "railpay_send";
   status: PaymentStatus;
   amount_usdg: string;
   /** Seller address (0x…) for railpay_fetch, agent id (agt_…) for railpay_send. */
   pay_to: string;
+  /** The URL that was paid for (railpay_fetch). */
+  url?: string;
+  memo?: string;
   tx_hash: string | null;
   tx_url: string | null;
+  /** ISO 8601. */
+  at: string;
 };
+
+/** @deprecated Since 0.5.0 a payment is a {@link PaymentRecord}, which has every field PaymentInfo had. */
+export type PaymentInfo = PaymentRecord;
 
 /** What a payment is about to be, as passed to `confirm()`. */
 export type PaymentRequest = {
@@ -51,6 +62,8 @@ export type GuardOptions = {
   allowedHosts?: readonly string[];
   /** Asked before every payment, after the limits pass. */
   confirm?: ConfirmPayment;
+  /** Called when a payment is recorded and again when its status changes. */
+  onPayment?: (record: PaymentRecord) => void;
 };
 
 export type SessionSummary = {
@@ -59,13 +72,14 @@ export type SessionSummary = {
   reserved_usdg: string;
   budget_usdg: string | null;
   remaining_usdg: string | null;
+  payments: number;
 };
 
 /** A hold on part of the session budget while one payment is in flight. */
 export type Reservation = {
   readonly amount: bigint;
   /** The payment went out: record it and count it as spent. */
-  commit(result: { status: PaymentStatus; tx_hash?: string | null }): PaymentInfo;
+  commit(result: { status: PaymentStatus; tx_hash?: string | null }): PaymentRecord;
   /** Nothing was signed or sent: give the amount back. */
   release(): void;
 };
@@ -102,8 +116,11 @@ export class SpendingGuard {
   readonly allowedHosts: readonly string[] | null;
   readonly confirmRequired: boolean;
   readonly #confirm: ConfirmPayment | undefined;
+  readonly #onPayment: ((record: PaymentRecord) => void) | undefined;
   #spent = 0n;
   #reserved = 0n;
+  #seq = 0;
+  readonly #records: PaymentRecord[] = [];
 
   constructor(options: GuardOptions = {}) {
     this.maxPerCall = parseAmount(options.maxPerCall ?? DEFAULT_MAX_PER_CALL, "maxPerCall");
@@ -111,6 +128,7 @@ export class SpendingGuard {
     this.allowedHosts = options.allowedHosts ? normalizeHosts(options.allowedHosts) : null;
     this.#confirm = options.confirm;
     this.confirmRequired = typeof options.confirm === "function";
+    this.#onPayment = options.onPayment;
   }
 
   hostAllowed(url: URL): boolean {
@@ -149,7 +167,7 @@ export class SpendingGuard {
    * The caller must commit() or release() the returned reservation.
    */
   async authorize(p: {
-    tool: PaymentRequest["tool"];
+    tool: PaymentRecord["tool"];
     amount: bigint;
     payTo: string;
     limit?: bigint;
@@ -183,7 +201,21 @@ export class SpendingGuard {
         if (!close()) throw new Error("This reservation is already closed");
         this.#spent += p.amount;
         const hash = tx_hash || null;
-        return { status, amount_usdg: fromUnits(p.amount), pay_to: p.payTo, tx_hash: hash, tx_url: hash ? txUrl(hash) : null };
+        const record: PaymentRecord = {
+          id: `pay_${++this.#seq}`,
+          tool: p.tool,
+          status,
+          amount_usdg: fromUnits(p.amount),
+          pay_to: p.payTo,
+          ...(p.url ? { url: p.url } : {}),
+          ...(p.memo ? { memo: p.memo } : {}),
+          tx_hash: hash,
+          tx_url: hash ? txUrl(hash) : null,
+          at: new Date().toISOString(),
+        };
+        this.#records.push(record);
+        this.#emit(record);
+        return { ...record };
       },
       release: () => {
         close();
@@ -215,6 +247,29 @@ export class SpendingGuard {
     return reservation;
   }
 
+  /** Update the status of a recorded payment (a retry that settled, say). The amount stays counted. */
+  update(id: string, patch: { status: PaymentStatus; tx_hash?: string | null }): PaymentRecord | undefined {
+    const record = this.#records.find((r) => r.id === id);
+    if (!record) return undefined;
+    record.status = patch.status;
+    if (patch.tx_hash) {
+      record.tx_hash = patch.tx_hash;
+      record.tx_url = txUrl(patch.tx_hash);
+    }
+    this.#emit(record);
+    return { ...record };
+  }
+
+  get(id: string): PaymentRecord | undefined {
+    const record = this.#records.find((r) => r.id === id);
+    return record ? { ...record } : undefined;
+  }
+
+  /** Every payment made in this session, oldest first. */
+  payments(): PaymentRecord[] {
+    return this.#records.map((r) => ({ ...r }));
+  }
+
   session(): SessionSummary {
     const left = this.remaining();
     return {
@@ -222,6 +277,15 @@ export class SpendingGuard {
       reserved_usdg: fromUnits(this.#reserved),
       budget_usdg: this.sessionBudget === null ? null : fromUnits(this.sessionBudget),
       remaining_usdg: left === null ? null : fromUnits(left),
+      payments: this.#records.length,
     };
+  }
+
+  #emit(record: PaymentRecord) {
+    try {
+      this.#onPayment?.({ ...record });
+    } catch {
+      // A logging callback must not break a payment that already went out.
+    }
   }
 }

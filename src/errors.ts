@@ -86,6 +86,8 @@ const HINTS: Record<string, string> = {
   invalid_amount: "The amount must be a positive USDG decimal string, e.g. \"0.01\".",
   invalid_input: "Fix the input and call the tool again.",
   invalid_url: "Use an absolute http(s) URL.",
+  payment_already_used: "That payment already settled and its response was returned. Do not retry it.",
+  payment_expired: "That signed payment expired before it settled, so it was not charged. Ask the user before paying again.",
   unknown_tool: "Use one of the tools you were given.",
 };
 

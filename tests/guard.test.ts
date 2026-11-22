@@ -19,7 +19,7 @@ describe("SpendingGuard", () => {
     expect(g.maxPerCall).toBe(100_000n);
     expect(g.sessionBudget).toBeNull();
     expect(g.hostAllowed(new URL("https://anything.test/x"))).toBe(true);
-    expect(g.session()).toEqual({ spent_usdg: "0", reserved_usdg: "0", budget_usdg: null, remaining_usdg: null });
+    expect(g.session()).toEqual({ spent_usdg: "0", reserved_usdg: "0", budget_usdg: null, remaining_usdg: null, payments: 0 });
   });
 
   it("rejects bad options when it is built", () => {
@@ -57,7 +57,7 @@ describe("SpendingGuard", () => {
     const info = b.commit({ status: "settled", tx_hash: `0x${"cd".repeat(32)}` });
     expect(info).toMatchObject({ status: "settled", amount_usdg: "0.003", pay_to: "0x2" });
     expect(info.tx_url).toContain("/tx/0x");
-    expect(g.session()).toEqual({ spent_usdg: "0.003", reserved_usdg: "0", budget_usdg: "0.003", remaining_usdg: "0" });
+    expect(g.session()).toEqual({ spent_usdg: "0.003", reserved_usdg: "0", budget_usdg: "0.003", remaining_usdg: "0", payments: 1 });
     expect(() => b.commit({ status: "settled" })).toThrow(/closed/);
     b.release(); // no effect once committed
     expect(g.session().spent_usdg).toBe("0.003");

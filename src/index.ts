@@ -24,6 +24,7 @@ export {
   type ConfirmPayment,
   type GuardOptions,
   type PaymentInfo,
+  type PaymentRecord,
   type PaymentRequest,
   type PaymentStatus,
   type Reservation,

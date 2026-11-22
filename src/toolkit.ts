@@ -13,7 +13,7 @@ import {
 } from "railpay-sdk";
 
 import { ToolRefusal, toToolError, toolError, type ToolError } from "./errors.js";
-import { SpendingGuard, type GuardOptions, type PaymentInfo, type PaymentStatus, type Reservation, type SessionSummary } from "./guard.js";
+import { SpendingGuard, type GuardOptions, type PaymentRecord, type PaymentStatus, type Reservation, type SessionSummary } from "./guard.js";
 import { USDG_PATTERN, validate, type ObjectSchema } from "./schema.js";
 
 export type ToolName = "railpay_balance" | "railpay_quote" | "railpay_fetch" | "railpay_send";
@@ -25,7 +25,7 @@ export type ToolFailure = {
   ok: false;
   error: ToolError;
   /** Set when money may have moved before the failure (signed, or sent without an answer). */
-  payment?: PaymentInfo;
+  payment?: PaymentRecord;
 };
 
 export type ToolSuccess<T extends object = Record<string, unknown>> = { ok: true } & T;
@@ -79,6 +79,8 @@ export type RailPayToolkit = {
   has(name: string): boolean;
   /** Run a tool by name. Unknown or switched-off tools resolve to a refusal. Never throws. */
   run(name: string, input: unknown, context?: ToolContext): Promise<ToolResult>;
+  /** Payments made in this session, oldest first. */
+  payments(): PaymentRecord[];
   session(): SessionSummary;
   guard: SpendingGuard;
   client: RailPayClient;
@@ -139,12 +141,14 @@ export type QuoteOutput = {
 };
 
 export type PaidInfo = {
+  payment_id: string;
   status: PaymentStatus;
   amount_usdg: string;
   pay_to: string;
   settled: boolean;
   tx_hash: string | null;
   tx_url: string | null;
+  retried?: boolean;
   note?: string;
 };
 
@@ -163,6 +167,7 @@ export type FetchOutput = {
 };
 
 export type SendOutput = {
+  payment_id: string;
   status: PaymentStatus;
   amount_usdg: string;
   to: string;
@@ -197,6 +202,12 @@ const SCHEMAS: Record<ToolName, ObjectSchema> = {
         type: "string",
         pattern: USDG_PATTERN,
         description: 'Refuse to pay more than this, in USDG, e.g. "0.01". Can only lower the per-call limit.',
+      },
+      retry_payment_id: {
+        type: "string",
+        pattern: "^pay_\\d+$",
+        description:
+          "Only after a result told you to: the payment_id of an earlier railpay_fetch to the same url. Resends that request with the same signed payment, so you are not charged again.",
       },
     },
     required: ["url"],
@@ -308,6 +319,8 @@ function errorField(text: string): string | undefined {
   }
 }
 
+type Signed = { payment: string; url: string; method: string; headers: Record<string, string>; body: string | undefined; validBefore: number };
+
 // ---------- toolkit ----------
 
 /**
@@ -322,6 +335,8 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
   const allowSend = options.allowSend === true;
   const maxBodyChars = options.maxBodyChars ?? DEFAULT_MAX_BODY_CHARS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  /** Signed payments by record id, for retry_payment_id. Never put in a tool result. */
+  const signed = new Map<string, Signed>();
 
   const needKey = () => {
     if (!hasKey) throw new ToolRefusal("missing_agent_key", "No RailPay agent key is configured (apiKey)", "config");
@@ -430,9 +445,9 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
   }
 
   // ----- railpay_fetch -----
-  type FetchInput = { url: string; method?: string; body?: string; headers?: Record<string, string>; max_amount?: string };
+  type FetchInput = { url: string; method?: string; body?: string; headers?: Record<string, string>; max_amount?: string; retry_payment_id?: string };
 
-  async function respond(res: Response, url: URL, paid: PaymentInfo | null): Promise<ToolSuccess<FetchOutput>> {
+  async function respond(res: Response, url: URL, paid: { record: PaymentRecord; retried?: boolean } | null): Promise<ToolSuccess<FetchOutput>> {
     const read = await readBody(res, maxBodyChars);
     const redirect = redirectOf(res, url.href);
     const out: ToolSuccess<FetchOutput> = {
@@ -448,20 +463,22 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
     };
     if (redirect) out.note = `Redirect to ${redirect}, not followed. Call railpay_fetch with that URL if you trust it.`;
     if (paid) {
-      const r = paid;
+      const r = paid.record;
       const info: PaidInfo = {
+        payment_id: r.id,
         status: r.status,
         amount_usdg: r.amount_usdg,
         pay_to: r.pay_to,
         settled: r.status === "settled",
         tx_hash: r.tx_hash,
         tx_url: r.tx_url,
+        ...(paid.retried ? { retried: true } : {}),
       };
-      const again = "Do not pay again for the same thing. Tell the user, with the transaction link.";
+      const retry = `Call railpay_fetch again with the same url and retry_payment_id "${r.id}" in a few seconds; you will not be charged again.`;
       if (r.status === "settled" && !res.ok) info.note = `The payment settled but the seller answered HTTP ${res.status}. Do not pay again for the same thing. Tell the user.`;
-      if (r.status === "pending") info.note = `The payment was broadcast and is still confirming, so the seller has not served the resource yet. ${again}`;
+      if (r.status === "pending") info.note = `The payment was broadcast and is still confirming, so the seller has not served the resource yet. ${retry}`;
       if (r.status === "unconfirmed" && res.status === 402) {
-        info.note = `The seller did not accept the payment (${errorField(read.text) ?? "no reason given"}). ${again} The payment counts against the session budget.`;
+        info.note = `The seller did not accept the payment (${errorField(read.text) ?? "no reason given"}). You may retry once: ${retry} The payment counts against the session budget.`;
       } else if (r.status === "unconfirmed") {
         info.note = "Signed and sent. The seller did not confirm settlement in this response.";
       }
@@ -482,10 +499,37 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
     return { status: "unconfirmed", tx_hash: null };
   }
 
+  async function retryFetch(input: FetchInput, url: URL, ctx: ToolContext): Promise<ToolResult> {
+    const id = input.retry_payment_id!;
+    const record = guard.get(id);
+    if (record?.tool !== "railpay_fetch") throw new ToolRefusal("invalid_input", `No railpay_fetch payment ${id} in this session`, "input");
+    if (record.url !== url.href) throw new ToolRefusal("invalid_input", `${id} paid for ${record.url}, not ${url.href}`, "input");
+    if (record.status === "settled") {
+      throw new ToolRefusal("payment_already_used", `${id} already settled and was used for its response`, "input");
+    }
+    const prior = signed.get(id);
+    if (!prior) throw new ToolRefusal("invalid_input", `${id} cannot be retried`, "input");
+    if (Date.now() / 1000 > prior.validBefore) {
+      throw new ToolRefusal("payment_expired", `${id} expired before it settled. It was not charged; a new railpay_fetch would ask for a new payment.`, "input");
+    }
+    const res = await baseFetch(url.href, {
+      method: prior.method,
+      headers: { ...prior.headers, "PAYMENT-SIGNATURE": prior.payment },
+      body: prior.body,
+      redirect: "manual",
+      signal: signalFor(timeoutMs, ctx.signal),
+    });
+    const next = statusOf(res);
+    const updated = next.status === "unconfirmed" ? guard.get(id)! : guard.update(id, next)!;
+    if (updated.status === "settled") signed.delete(id);
+    return respond(res, url, { record: updated, retried: true });
+  }
+
   async function paidFetch(input: FetchInput, ctx: ToolContext): Promise<ToolResult> {
     needKey();
     const url = parseUrl(input.url);
     guard.checkHost(url);
+    if (input.retry_payment_id) return retryFetch(input, url, ctx);
 
     const limit = guard.limitFor(input.max_amount === undefined ? undefined : toUnits(input.max_amount));
     const method = input.method ?? "GET";
@@ -528,17 +572,25 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
       const h = held;
       if (!h) throw e;
       // Signed, then the paid retry got no answer: the seller may still settle it.
-      const payment = h.reservation.commit({ status: "unknown" });
+      const record = h.reservation.commit({ status: "unknown" });
+      signed.set(record.id, { payment: h.payment.payment, url: url.href, method, headers, body, validBefore: h.payment.valid_before });
       const err = toToolError(e);
       return {
         ok: false,
-        error: { ...err, hint: "The payment was signed and sent, but the request got no answer, so it may settle. Do not pay again for this. Tell the user." },
-        payment,
+        error: {
+          ...err,
+          hint: `The payment was signed and sent, but the request got no answer, so it may settle. Do not start a new payment for this. Retry once with retry_payment_id "${record.id}", or tell the user.`,
+        },
+        payment: record,
       };
     }
     const h = held;
     if (!h) return respond(res, url, null);
-    return respond(res, url, h.reservation.commit(statusOf(res)));
+    const record = h.reservation.commit(statusOf(res));
+    if (record.status !== "settled") {
+      signed.set(record.id, { payment: h.payment.payment, url: url.href, method, headers, body, validBefore: h.payment.valid_before });
+    }
+    return respond(res, url, { record });
   }
 
   // ----- railpay_send -----
@@ -557,16 +609,17 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
         throw e;
       }
       // No answer from RailPay: the transfer may have gone out. Keep it counted.
-      const payment = reservation.commit({ status: "unknown" });
+      const record = reservation.commit({ status: "unknown" });
       return {
         ok: false,
         error: { ...err, hint: "RailPay did not answer, so the transfer may have gone out. Do not send again. Check railpay_balance or tell the user." },
-        payment,
+        payment: record,
       };
     }
     const record = reservation.commit({ status: r.pending ? "pending" : "settled", tx_hash: r.tx_hash });
     const out: ToolSuccess<SendOutput> = {
       ok: true,
+      payment_id: record.id,
       status: record.status,
       amount_usdg: record.amount_usdg,
       to: input.to,
@@ -663,6 +716,7 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
       if (!has(name)) return { ok: false, error: toolError("unknown_tool", `There is no tool named ${JSON.stringify(name)}`, "input") };
       return all[name].execute(input, context);
     },
+    payments: () => guard.payments(),
     session: () => guard.session(),
     guard,
     client,

@@ -152,6 +152,7 @@ Also:
 - Refusals are results, not exceptions: `{ ok: false, error: { code, message, source, retryable, hint } }`. `source` tells a local limit (`guard`) from your `confirm` saying no (`user`), the agent's RailPay policy (`policy`), a setup problem (`config`), bad input (`input`), a network failure (`network`) and other RailPay answers (`railpay`). The `hint` tells the model what to do next, usually "do not retry, tell the user".
 - `railpay_fetch` signs only x402 `exact` payments in USDG on `eip155:4663`, and only the requirement the guard checked. It pays at most once per call, does not follow redirects, and does not let the model set `PAYMENT-SIGNATURE` or `X-PAYMENT` headers.
 - A payment counts as spent once it is signed and handed to the seller, whether the seller then confirms it or not. If the paid request gets no answer, the result is a failure that still carries the `payment`, with status `unknown`, so the model does not pay twice.
+- Every payment gets an id (`pay_1`, `pay_2`, …). When a payment is still pending, was not accepted, or got no answer, the result tells the model to call `railpay_fetch` again with `retry_payment_id`: that resends the same signed payment to the same URL, so the seller can serve the resource without a second charge. A settled payment cannot be reused, and an expired one is refused (it was never charged).
 - Bodies are read up to the character limit and no further. Binary responses are not inlined.
 
 ### Asking a human before each payment
@@ -187,13 +188,15 @@ const railpay = createRailPayTools({
 | `maxPerCall`, `sessionBudget`, `allowedHosts`, `allowSend`, `confirm` | see above | |
 | `maxBodyChars` | `20000` | Response bodies are cut at this many characters |
 | `timeoutMs` | `60000` | Timeout for each HTTP request a tool makes |
+| `onPayment` | none | Called with the payment record when a payment is made, and again when a retry changes its status. For your own logs; a throw is ignored |
 
 It returns a toolkit:
 
 - `tools`: the tools to give the model (`railpay_send` only with `allowSend`).
 - `run(name, input, { signal })`: run a tool by name. Never throws.
 - `tool(name)`, `has(name)`: look a tool up. `has` is true for every RailPay tool name, so you can route calls.
-- `session()`: spent, reserved, budget and remaining USDG for this instance.
+- `session()`: spent, reserved, budget and remaining USDG for this instance, and the number of payments.
+- `payments()`: every payment made through this instance, oldest first: `{ id, tool, status, amount_usdg, pay_to, url?, memo?, tx_hash, tx_url, at }`. Signed payloads are never in it.
 - `guard`, `client`: the `SpendingGuard` and the RailPay client in use.
 
 `resultText(result)` turns a result into the JSON string to send back to the model. Amounts are decimal USDG strings throughout.
@@ -204,7 +207,7 @@ It returns a toolkit:
 |---|---|
 | `railpay_balance` | `{}` |
 | `railpay_quote` | `{ url }` |
-| `railpay_fetch` | `{ url, method?, body?, headers?, max_amount? }`. `method` is GET, POST, PUT, PATCH or DELETE |
+| `railpay_fetch` | `{ url, method?, body?, headers?, max_amount?, retry_payment_id? }`. `method` is GET, POST, PUT, PATCH or DELETE |
 | `railpay_send` | `{ to: "agt_…", amount: "0.05", memo? }` |
 
 ## Security
