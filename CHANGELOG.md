@@ -2,6 +2,14 @@
 
 All notable changes to railpay-agent-tools. Versions follow [Semantic Versioning](https://semver.org); before 1.0.0 a minor version may change the API.
 
+## [0.2.0] - 2026-11-22
+
+### Added
+
+- `railpay-agent-tools/ai`: `aiSdkTools(toolkit)` turns the tools into Vercel AI SDK tools for `generateText` and `streamText`, built with `tool()` and `jsonSchema()` (no zod schemas needed). The model gets the structured result, refusals included, and the AI SDK abort signal is passed through to the HTTP requests.
+- `ai` ^7 as an optional peer dependency. Tested with `ai` 7.0.179.
+- Example `examples/ai-sdk.ts` (Claude through `@ai-sdk/anthropic`) and an AI SDK quick start in the README.
+
 ## [0.1.0] - 2026-11-22
 
 First release.
