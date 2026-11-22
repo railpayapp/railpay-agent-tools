@@ -2,6 +2,8 @@
 export type ErrorSource =
   /** This library's spending guard: maxPerCall, sessionBudget, allowedHosts, send switched off. */
   | "guard"
+  /** Your confirm() callback said no. */
+  | "user"
   /** The agent's policy on RailPay (set by the owner in the dapp). */
   | "policy"
   /** Another answer from the RailPay API. */
@@ -61,9 +63,10 @@ const HINTS: Record<string, string> = {
   over_daily_cap: "The agent's daily spending cap is reached. It resets at 00:00 UTC. Do not retry today. Tell the user.",
   insufficient_funds: "The agent wallet does not hold enough USDG. Tell the user it needs a top-up.",
   insufficient_gas: "The agent wallet needs a little ETH on Robinhood Chain for gas. Tell the user.",
-  // Local guard.
+  // Local guard and user.
   over_max_amount: "The price is above the per-call limit for this session. Do not retry. Tell the user the price and ask before going further.",
   over_session_budget: "This session's spending budget is used up. Do not retry. Tell the user how much was spent.",
+  payment_declined: "The user declined this payment. Do not retry it unless the user asks.",
   send_disabled: "Sending USDG to other agents is switched off for this assistant. Do not retry.",
   // Setup.
   missing_agent_key: "No RailPay agent key is configured. Tell the user to create an agent in the RailPay dapp and pass its key.",
@@ -88,6 +91,7 @@ const HINTS: Record<string, string> = {
 
 const DEFAULT_HINT: Record<ErrorSource, string> = {
   guard: "Do not retry. Tell the user.",
+  user: "Do not retry unless the user asks.",
   policy: "Do not retry. Tell the user.",
   railpay: "Tell the user what happened.",
   input: "Fix the input and call the tool again.",

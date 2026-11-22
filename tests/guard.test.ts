@@ -38,7 +38,7 @@ describe("SpendingGuard", () => {
 
   it("refuses a payment above the per-call cap", async () => {
     const g = new SpendingGuard({ maxPerCall: "0.01" });
-    const e = await refusal(g.authorize({ amount: 20_000n, payTo: "0x2" }));
+    const e = await refusal(g.authorize({ tool: "railpay_fetch", amount: 20_000n, payTo: "0x2" }));
     expect(e.code).toBe("over_max_amount");
     expect(e.source).toBe("guard");
     expect(e.message).toContain("0.02 USDG");
@@ -46,14 +46,14 @@ describe("SpendingGuard", () => {
 
   it("holds, commits and releases against the session budget", async () => {
     const g = new SpendingGuard({ sessionBudget: "0.003" });
-    const a = await g.authorize({ amount: 2_000n, payTo: "0x2" });
+    const a = await g.authorize({ tool: "railpay_fetch", amount: 2_000n, payTo: "0x2" });
     expect(g.session()).toMatchObject({ reserved_usdg: "0.002", remaining_usdg: "0.001" });
     // The hold counts: a second payment cannot use the same budget.
-    expect((await refusal(g.authorize({ amount: 2_000n, payTo: "0x2" }))).code).toBe("over_session_budget");
+    expect((await refusal(g.authorize({ tool: "railpay_fetch", amount: 2_000n, payTo: "0x2" }))).code).toBe("over_session_budget");
     a.release();
     expect(g.session()).toMatchObject({ reserved_usdg: "0", remaining_usdg: "0.003" });
 
-    const b = await g.authorize({ amount: 3_000n, payTo: "0x2" });
+    const b = await g.authorize({ tool: "railpay_fetch", amount: 3_000n, payTo: "0x2" });
     const info = b.commit({ status: "settled", tx_hash: `0x${"cd".repeat(32)}` });
     expect(info).toMatchObject({ status: "settled", amount_usdg: "0.003", pay_to: "0x2" });
     expect(info.tx_url).toContain("/tx/0x");
@@ -65,7 +65,7 @@ describe("SpendingGuard", () => {
 
   it("does not let parallel payments overspend the budget", async () => {
     const g = new SpendingGuard({ sessionBudget: "0.005" });
-    const results = await Promise.allSettled(Array.from({ length: 4 }, () => g.authorize({ amount: 2_000n, payTo: "0x2" })));
+    const results = await Promise.allSettled(Array.from({ length: 4 }, () => g.authorize({ tool: "railpay_fetch", amount: 2_000n, payTo: "0x2" })));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(2);
   });

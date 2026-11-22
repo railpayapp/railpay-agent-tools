@@ -23,6 +23,22 @@ export type PaymentInfo = {
   tx_url: string | null;
 };
 
+/** What a payment is about to be, as passed to `confirm()`. */
+export type PaymentRequest = {
+  tool: "railpay_fetch" | "railpay_send";
+  amount_usdg: string;
+  pay_to: string;
+  url?: string;
+  memo?: string;
+  /** The seller's description of the resource, when it gave one. */
+  description?: string;
+  session_spent_usdg: string;
+  session_budget_usdg: string | null;
+};
+
+/** Human-in-the-loop hook. Return true to pay. False, or a throw, declines the payment. */
+export type ConfirmPayment = (payment: PaymentRequest) => boolean | Promise<boolean>;
+
 export type GuardOptions = {
   /** Ceiling per payment, in USDG. Default "0.1". */
   maxPerCall?: string | number;
@@ -33,11 +49,13 @@ export type GuardOptions = {
    * When set, railpay_quote and railpay_fetch refuse any other host before making a request. Default: any host.
    */
   allowedHosts?: readonly string[];
+  /** Asked before every payment, after the limits pass. */
+  confirm?: ConfirmPayment;
 };
 
 export type SessionSummary = {
   spent_usdg: string;
-  /** Held by payments in flight (being signed). */
+  /** Held by payments in flight (signing, waiting for confirm()). */
   reserved_usdg: string;
   budget_usdg: string | null;
   remaining_usdg: string | null;
@@ -82,6 +100,8 @@ export class SpendingGuard {
   readonly maxPerCall: bigint;
   readonly sessionBudget: bigint | null;
   readonly allowedHosts: readonly string[] | null;
+  readonly confirmRequired: boolean;
+  readonly #confirm: ConfirmPayment | undefined;
   #spent = 0n;
   #reserved = 0n;
 
@@ -89,6 +109,8 @@ export class SpendingGuard {
     this.maxPerCall = parseAmount(options.maxPerCall ?? DEFAULT_MAX_PER_CALL, "maxPerCall");
     this.sessionBudget = options.sessionBudget === undefined ? null : parseAmount(options.sessionBudget, "sessionBudget");
     this.allowedHosts = options.allowedHosts ? normalizeHosts(options.allowedHosts) : null;
+    this.#confirm = options.confirm;
+    this.confirmRequired = typeof options.confirm === "function";
   }
 
   hostAllowed(url: URL): boolean {
@@ -123,10 +145,18 @@ export class SpendingGuard {
   }
 
   /**
-   * Check the limits and hold the amount. Throws a refusal when a limit says no.
+   * Check the limits, hold the amount, then ask confirm(). Throws a refusal when a limit or the user says no.
    * The caller must commit() or release() the returned reservation.
    */
-  async authorize(p: { amount: bigint; payTo: string; limit?: bigint }): Promise<Reservation> {
+  async authorize(p: {
+    tool: PaymentRequest["tool"];
+    amount: bigint;
+    payTo: string;
+    limit?: bigint;
+    url?: string;
+    memo?: string;
+    description?: string;
+  }): Promise<Reservation> {
     const limit = p.limit ?? this.maxPerCall;
     const broken = this.evaluate(p.amount, limit);
     if (broken === "over_max_amount") {
@@ -159,6 +189,29 @@ export class SpendingGuard {
         close();
       },
     };
+
+    if (this.#confirm) {
+      let yes = false;
+      try {
+        yes =
+          (await this.#confirm({
+            tool: p.tool,
+            amount_usdg: fromUnits(p.amount),
+            pay_to: p.payTo,
+            ...(p.url ? { url: p.url } : {}),
+            ...(p.memo ? { memo: p.memo } : {}),
+            ...(p.description ? { description: p.description } : {}),
+            session_spent_usdg: fromUnits(this.#spent),
+            session_budget_usdg: this.sessionBudget === null ? null : fromUnits(this.sessionBudget),
+          })) === true;
+      } catch {
+        yes = false;
+      }
+      if (!yes) {
+        reservation.release();
+        throw new ToolRefusal("payment_declined", `The user declined paying ${fromUnits(p.amount)} USDG to ${p.payTo}`, "user");
+      }
+    }
     return reservation;
   }
 

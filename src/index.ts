@@ -21,8 +21,10 @@ export {
 export {
   SpendingGuard,
   DEFAULT_MAX_PER_CALL,
+  type ConfirmPayment,
   type GuardOptions,
   type PaymentInfo,
+  type PaymentRequest,
   type PaymentStatus,
   type Reservation,
   type SessionSummary,

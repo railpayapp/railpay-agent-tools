@@ -109,6 +109,7 @@ export type BalanceOutput = {
     session_remaining_usdg: string | null;
     allowed_hosts: string[] | null;
     send_enabled: boolean;
+    confirm_required: boolean;
     /** The most a single payment can be right now: the lowest of every limit and the balance. */
     max_payment_now_usdg: string;
   };
@@ -311,7 +312,7 @@ function errorField(text: string): string | undefined {
 
 /**
  * Build the RailPay payment tools for one agent session.
- * Limits (maxPerCall, sessionBudget, allowedHosts) apply to every tool call made through this toolkit.
+ * Limits (maxPerCall, sessionBudget, allowedHosts, confirm) apply to every tool call made through this toolkit.
  */
 export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayToolkit {
   const guard = new SpendingGuard(options);
@@ -365,6 +366,7 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
         session_remaining_usdg: session.remaining_usdg,
         allowed_hosts: guard.allowedHosts ? [...guard.allowedHosts] : null,
         send_enabled: allowSend,
+        confirm_required: guard.confirmRequired,
         max_payment_now_usdg: fromUnits(now),
       },
       explorer: addressUrl(a.address),
@@ -499,7 +501,14 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
     const guarded = Object.create(client) as RailPayClient;
     guarded.pay = async (pr: PaymentRequired, resourceUrl?: string) => {
       const req = pr.accepts.find(isRailPayPayable)!;
-      const reservation = await guard.authorize({ amount: requirementAmount(req), payTo: req.payTo, limit });
+      const reservation = await guard.authorize({
+        tool: "railpay_fetch",
+        amount: requirementAmount(req),
+        payTo: req.payTo,
+        limit,
+        url: url.href,
+        description: pr.resource?.description,
+      });
       try {
         const payment = await client.pay({ ...pr, accepts: [req] }, resourceUrl);
         held = { reservation, payTo: req.payTo, payment };
@@ -537,7 +546,7 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
     needKey();
     const amount = toUnits(input.amount);
     if (amount <= 0n) throw new ToolRefusal("invalid_amount", "amount must be above 0", "input");
-    const reservation = await guard.authorize({ amount, payTo: input.to });
+    const reservation = await guard.authorize({ tool: "railpay_send", amount, payTo: input.to, memo: input.memo });
     let r;
     try {
       r = await client.send({ to: input.to, amount: fromUnits(amount), ...(input.memo ? { memo: input.memo } : {}) });
@@ -574,6 +583,7 @@ export function createRailPayTools(options: RailPayToolsOptions = {}): RailPayTo
     const parts = [`at most ${fromUnits(guard.maxPerCall)} USDG per payment`];
     if (guard.sessionBudget !== null) parts.push(`a total budget of ${fromUnits(guard.sessionBudget)} USDG`);
     if (guard.allowedHosts) parts.push(`only these hosts: ${guard.allowedHosts.join(", ")}`);
+    if (guard.confirmRequired) parts.push("the user approves each payment");
     return ` Limits in this session: ${parts.join("; ")}.`;
   };
   const hostText = () => (guard.allowedHosts ? ` Only these hosts can be used: ${guard.allowedHosts.join(", ")}.` : "");

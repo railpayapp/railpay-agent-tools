@@ -145,13 +145,34 @@ Every payment has to pass two sets of limits, and the tightest one wins.
 | `sessionBudget` | none | Total USDG the toolkit instance may spend. Payments in flight hold their amount, so parallel tool calls cannot overspend it |
 | `allowedHosts` | any host | `railpay_quote` and `railpay_fetch` refuse other hosts before making any request. Exact match on host and port, like RailPay's own allowlist |
 | `allowSend` | `false` | `railpay_send` is not offered to the model, and refuses if called anyway |
+| `confirm` | none | Human in the loop: called before every payment, after the limits pass. Return `true` to pay. `false`, any other value or a throw refuses with `payment_declined`, and nothing is signed. The amount stays held while it waits |
 
 Also:
 
-- Refusals are results, not exceptions: `{ ok: false, error: { code, message, source, retryable, hint } }`. `source` tells a local limit (`guard`) from the agent's RailPay policy (`policy`), a setup problem (`config`), bad input (`input`), a network failure (`network`) and other RailPay answers (`railpay`). The `hint` tells the model what to do next, usually "do not retry, tell the user".
+- Refusals are results, not exceptions: `{ ok: false, error: { code, message, source, retryable, hint } }`. `source` tells a local limit (`guard`) from your `confirm` saying no (`user`), the agent's RailPay policy (`policy`), a setup problem (`config`), bad input (`input`), a network failure (`network`) and other RailPay answers (`railpay`). The `hint` tells the model what to do next, usually "do not retry, tell the user".
 - `railpay_fetch` signs only x402 `exact` payments in USDG on `eip155:4663`, and only the requirement the guard checked. It pays at most once per call, does not follow redirects, and does not let the model set `PAYMENT-SIGNATURE` or `X-PAYMENT` headers.
 - A payment counts as spent once it is signed and handed to the seller, whether the seller then confirms it or not. If the paid request gets no answer, the result is a failure that still carries the `payment`, with status `unknown`, so the model does not pay twice.
 - Bodies are read up to the character limit and no further. Binary responses are not inlined.
+
+### Asking a human before each payment
+
+```ts
+import { createInterface } from "node:readline/promises";
+import { createRailPayTools } from "railpay-agent-tools";
+
+const railpay = createRailPayTools({
+  apiKey: process.env.RAILPAY_AGENT_KEY,
+  confirm: async (p) => {
+    // p: { tool, amount_usdg, pay_to, url?, memo?, description?, session_spent_usdg, session_budget_usdg }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question(`Pay ${p.amount_usdg} USDG to ${p.pay_to} for ${p.url ?? p.memo ?? "this"}? [y/N] `);
+    rl.close();
+    return answer.trim().toLowerCase() === "y";
+  },
+});
+```
+
+`description` comes from the seller: show it, but do not trust it.
 
 ## API
 
@@ -163,7 +184,7 @@ Also:
 | `client` | none | A ready `RailPay` client from railpay-sdk, instead of `apiKey` and `baseUrl` |
 | `baseUrl` | `https://dapp.railpay.app` | RailPay API |
 | `fetch` | global `fetch` | Used for RailPay and for the URLs the agent requests |
-| `maxPerCall`, `sessionBudget`, `allowedHosts`, `allowSend` | see above | |
+| `maxPerCall`, `sessionBudget`, `allowedHosts`, `allowSend`, `confirm` | see above | |
 | `maxBodyChars` | `20000` | Response bodies are cut at this many characters |
 | `timeoutMs` | `60000` | Timeout for each HTTP request a tool makes |
 
