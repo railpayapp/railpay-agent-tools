@@ -89,6 +89,8 @@ export function mockWorld(init: Partial<MockState> = {}) {
   };
 
   const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    // Like a real fetch, an aborted signal rejects before anything is sent.
+    if (init?.signal?.aborted) throw init.signal.reason ?? new DOMException("This operation was aborted", "AbortError");
     const req = new Request(input, init);
     const body = await req.text();
     const headers: Record<string, string> = {};
