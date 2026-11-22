@@ -68,6 +68,7 @@
     "@ai-sdk/anthropic": "4.0.107",
     "@types/node": "26.1.1",
     "ai": "7.0.179",
+    "openai": "7.62.0",
     "railpay-sdk": "https://github.com/railpayapp/railpay-sdk/releases/download/v0.1.0/railpay-sdk-0.1.0.tgz",
     "tsup": "8.5.1",
     "typescript": "5.9.3",

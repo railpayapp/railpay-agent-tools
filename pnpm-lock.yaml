@@ -175,6 +175,9 @@ importers:
       ai:
         specifier: 7.0.179
         version: 7.0.179(zod@4.6.7)
+      openai:
+        specifier: 7.62.0
+        version: 7.62.0(ws@8.21.0)(zod@4.6.7)
       railpay-sdk:
         specifier: https://github.com/railpayapp/railpay-sdk/releases/download/v0.1.0/railpay-sdk-0.1.0.tgz
         version: https://github.com/railpayapp/railpay-sdk/releases/download/v0.1.0/railpay-sdk-0.1.0.tgz(typescript@5.9.3)(zod@4.6.7)
@@ -966,6 +969,33 @@ packages:
   obug@2.2.1:
     resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
     engines: {node: '>=12.20.0'}
+
+  openai@7.62.0:
+    resolution: {integrity: sha512-dehzgY2anBfU3H+FfWHCVjhb9ZRYzahzNpvmMExTmMaeU11i51NJIMJPDctgLiP4+pCh53KIsLVQ66ucKyDNMA==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
+      '@smithy/hash-node': '>=4.3.0 <5'
+      '@smithy/signature-v4': '>=5.4.0 <6'
+      google-auth-library: '>=9.15.1 <12'
+      undici: '>=5 <9'
+      ws: ^8.21.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      '@aws-sdk/credential-provider-node':
+        optional: true
+      '@smithy/hash-node':
+        optional: true
+      '@smithy/signature-v4':
+        optional: true
+      google-auth-library:
+        optional: true
+      undici:
+        optional: true
+      ws:
+        optional: true
+      zod:
+        optional: true
 
   ox@0.14.67:
     resolution: {integrity: sha512-6v6UlwgsmiyTujZp0aVDuN8uIBAtl/QZadBADFRZ2zp1+CM9TqDzd+rPKJ5PYvWPlCvz8JvoO9dTr42+1PhBhA==}
@@ -1792,6 +1822,11 @@ snapshots:
   object-assign@4.1.1: {}
 
   obug@2.2.1: {}
+
+  openai@7.62.0(ws@8.21.0)(zod@4.6.7):
+    optionalDependencies:
+      ws: 8.21.0
+      zod: 4.6.7
 
   ox@0.14.67(typescript@5.9.3)(zod@4.6.7):
     dependencies:
