@@ -2,6 +2,19 @@
 
 All notable changes to railpay-agent-tools. Versions follow [Semantic Versioning](https://semver.org); before 1.0.0 a minor version may change the API.
 
+## [0.3.0] - 2026-11-22
+
+### Added
+
+- `railpay-agent-tools/openai`: `openaiChatTools()` and `openaiResponsesTools()` for the `tools` of Chat Completions and the Responses API, and the dispatchers `runOpenAIChatToolCalls(toolkit, message.tool_calls)` and `runOpenAIResponsesToolCalls(toolkit, response.output)`, which return the `role: "tool"` messages or `function_call_output` items to send back.
+- The dispatchers run only RailPay's calls, one after another, and skip other tools. Arguments that are not valid JSON get an `invalid_input` result.
+- Plain objects that type-check as the `openai` SDK types, so `openai` is not a dependency. Tested with `openai` 7.62.0.
+- Example `examples/openai.ts` (Responses API tool loop) and an OpenAI quick start in the README.
+
+### Fixed
+
+- The generic quick start in the README now type-checks.
+
 ## [0.2.0] - 2026-11-22
 
 ### Added
