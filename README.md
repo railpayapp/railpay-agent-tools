@@ -131,6 +131,39 @@ for (let step = 0; step < 8; step++) {
 
 `runAnthropicToolUses()` returns the `tool_result` blocks for RailPay's `tool_use` blocks, with `is_error: true` on refusals, and skips other tools so you can answer those in the same user message. Like the OpenAI adapter it imports nothing from `@anthropic-ai/sdk`. It also works with `client.beta.messages`: [examples/anthropic.ts](examples/anthropic.ts) uses the beta client with server-side refusal fallbacks. Tested with `@anthropic-ai/sdk` 1.12.0.
 
+### LangChain.js
+
+```ts
+import { ChatAnthropic } from "@langchain/anthropic";
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import { createRailPayTools } from "railpay-agent-tools";
+import { langchainTools } from "railpay-agent-tools/langchain";
+
+const railpay = createRailPayTools({ apiKey: process.env.RAILPAY_AGENT_KEY, maxPerCall: "0.001", allowedHosts: ["dapp.railpay.app"] });
+const tools = langchainTools(railpay);
+const model = new ChatAnthropic({ model: "claude-opus-5-5", maxTokens: 16000 }).bindTools(tools);
+
+const messages: BaseMessage[] = [new HumanMessage("What time is it at https://dapp.railpay.app/x402/time? Pay up to 0.001 USDG.")];
+for (let step = 0; step < 8; step++) {
+  const ai = await model.invoke(messages);
+  messages.push(ai);
+  if (!ai.tool_calls?.length) break;
+  for (const call of ai.tool_calls) messages.push(await tools.find((t) => t.name === call.name)!.invoke(call));
+}
+```
+
+`langchainTools()` returns `DynamicStructuredTool`s built from the JSON Schema (no zod), so they also work with `ToolNode` and `createAgent`. Each returns the result as JSON text, refusals included. One difference from the other adapters: LangChain checks the arguments against the schema itself and throws `ToolInputParsingException` before the tool runs; `ToolNode` turns that into an error message for the model, and in a loop of your own you catch it ([examples/langchain.ts](examples/langchain.ts) does). `@langchain/core` ^1 is an optional peer dependency. Tested with `@langchain/core` 1.5.0 and `@langchain/anthropic` 1.6.6.
+
+## Which should I use?
+
+| You are | Use |
+|---|---|
+| Giving an MCP client you already use (Claude Code, Claude Desktop, …) a wallet, without writing code | [railpay-mcp](https://github.com/railpayapp/railpay-mcp) |
+| Writing your own agent in TypeScript | railpay-agent-tools |
+| Writing code that pays with no model deciding when, or charging for your own API | [railpay-sdk](https://github.com/railpayapp/railpay-sdk) |
+
+The full comparison (limits, human approval, failures, retries, payment log) is in [docs/which-to-use.md](docs/which-to-use.md).
+
 ## Safety model
 
 Every payment has to pass two sets of limits, and the tightest one wins.
