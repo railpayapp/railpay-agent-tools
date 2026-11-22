@@ -55,7 +55,7 @@ for (const tool of railpay.tools) console.log(tool.name, tool.inputSchema);
 
 // Or run one by name when the model asks for it.
 const result = await railpay.run("railpay_fetch", { url: "https://dapp.railpay.app/x402/time" });
-if (result.ok) console.log(result.status, result.body, result.paid?.tx_url);
+if (result.ok) console.log(result.status, result.body, result.paid); // paid: amount, tx_hash, tx_url
 else console.log(result.error.code, result.error.hint);
 
 console.log(railpay.session()); // { spent_usdg, reserved_usdg, budget_usdg, remaining_usdg }
