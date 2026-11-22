@@ -2,6 +2,15 @@
 
 All notable changes to railpay-agent-tools. Versions follow [Semantic Versioning](https://semver.org); before 1.0.0 a minor version may change the API.
 
+## [0.4.0] - 2026-11-22
+
+### Added
+
+- `railpay-agent-tools/anthropic`: `anthropicTools()` for the `tools` of the Messages API, and `runAnthropicToolUses(toolkit, message.content)`, which returns the `tool_result` blocks for RailPay's `tool_use` blocks, with `is_error: true` on refusals.
+- The dispatcher skips other tools, server tools and toolset members such as the browser tools, and works with both `client.messages` and `client.beta.messages`.
+- Plain objects that type-check as the `@anthropic-ai/sdk` types, so the SDK is not a dependency. Tested with `@anthropic-ai/sdk` 1.12.0.
+- Example `examples/anthropic.ts` (Claude tool loop with server-side refusal fallbacks) and an Anthropic quick start in the README.
+
 ## [0.3.0] - 2026-11-22
 
 ### Added

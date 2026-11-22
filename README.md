@@ -22,8 +22,8 @@ Each tool is a plain object: `name`, `description` (written for the model, endin
 The package is not on npm yet. Install the built tarball from the GitHub release:
 
 ```sh
-pnpm add https://github.com/railpayapp/railpay-agent-tools/releases/download/v0.3.0/railpay-agent-tools-0.3.0.tgz
-# or: npm install https://github.com/railpayapp/railpay-agent-tools/releases/download/v0.3.0/railpay-agent-tools-0.3.0.tgz
+pnpm add https://github.com/railpayapp/railpay-agent-tools/releases/download/v0.4.0/railpay-agent-tools-0.4.0.tgz
+# or: npm install https://github.com/railpayapp/railpay-agent-tools/releases/download/v0.4.0/railpay-agent-tools-0.4.0.tgz
 ```
 
 `npm install github:railpayapp/railpay-agent-tools` also works: it builds the package on install. pnpm 10 and later refuse to run that build for a git dependency unless `allowBuilds` in `pnpm-workspace.yaml` names the exact commit, so with pnpm use the tarball.
