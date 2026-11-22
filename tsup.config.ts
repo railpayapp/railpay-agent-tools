@@ -6,6 +6,7 @@ export default defineConfig({
     index: "src/index.ts",
     ai: "src/adapters/ai.ts",
     openai: "src/adapters/openai.ts",
+    anthropic: "src/adapters/anthropic.ts",
   },
   format: ["esm"],
   // railpay-sdk is bundled: it is not on npm, and pnpm refuses URL or git dependencies of a dependency.

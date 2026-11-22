@@ -27,6 +27,10 @@
     "./openai": {
       "types": "./dist/openai.d.ts",
       "import": "./dist/openai.js"
+    },
+    "./anthropic": {
+      "types": "./dist/anthropic.d.ts",
+      "import": "./dist/anthropic.js"
     }
   },
   "files": [
@@ -54,7 +58,9 @@
     "payments",
     "stablecoin",
     "ai-sdk",
-    "openai"
+    "openai",
+    "anthropic",
+    "claude"
   ],
   "peerDependencies": {
     "ai": "^7.0.0"
