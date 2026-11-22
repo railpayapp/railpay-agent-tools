@@ -83,6 +83,32 @@ const { text } = await generateText({
 
 `aiSdkTools()` builds the tools with the AI SDK's `tool()` and `jsonSchema()`, so no zod schemas are needed. Pass them as `tools` to `generateText` or `streamText`; the model gets the structured result object. Tested with `ai` 7.0.179 and `generateText`. Full example: [examples/ai-sdk.ts](examples/ai-sdk.ts).
 
+### OpenAI
+
+```ts
+import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { createRailPayTools } from "railpay-agent-tools";
+import { openaiChatTools, runOpenAIChatToolCalls } from "railpay-agent-tools/openai";
+
+const railpay = createRailPayTools({ apiKey: process.env.RAILPAY_AGENT_KEY, maxPerCall: "0.001", allowedHosts: ["dapp.railpay.app"] });
+const openai = new OpenAI();
+const messages: ChatCompletionMessageParam[] = [{ role: "user", content: "What time is it at https://dapp.railpay.app/x402/time? Pay up to 0.001 USDG." }];
+
+for (let step = 0; step < 5; step++) {
+  const completion = await openai.chat.completions.create({ model: "gpt-5.5", messages, tools: openaiChatTools(railpay) });
+  const message = completion.choices[0]!.message;
+  messages.push(message);
+  const results = await runOpenAIChatToolCalls(railpay, message.tool_calls);
+  if (results.length === 0) break;
+  messages.push(...results);
+}
+```
+
+For the Responses API use `openaiResponsesTools()` and `runOpenAIResponsesToolCalls(railpay, response.output)`, which return `function_call_output` items: see [examples/openai.ts](examples/openai.ts).
+
+The adapter imports nothing from `openai`: tools and results are plain objects that type-check as the SDK's types, so `openai` is not a dependency. The dispatchers run only RailPay's tool calls, one after another, and skip the rest, so you can mix RailPay with your own tools and answer the others yourself. Arguments that are not valid JSON get an `invalid_input` result rather than an exception. Tested with `openai` 7.62.0.
+
 ## Safety model
 
 Every payment has to pass two sets of limits, and the tightest one wins.
