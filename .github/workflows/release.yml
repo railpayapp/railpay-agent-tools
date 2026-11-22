@@ -1,0 +1,45 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Check the tag matches package.json
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the package.json version $VERSION"
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Release notes from CHANGELOG.md
+        # The section for vX.Y.Z starts at "## [X.Y.Z] - YYYY-MM-DD" and ends at the next "## [".
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v h="## [${VERSION}] - " 'index($0, h) == 1 { f = 1; next } /^## \[/ { f = 0 } f' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no section headed \"## [${VERSION}] - YYYY-MM-DD\""
+            exit 1
+          fi
+          cat notes.md
+      - run: pnpm pack
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" railpay-agent-tools-*.tgz --title "railpay-agent-tools $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
