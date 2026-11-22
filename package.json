@@ -1,6 +1,6 @@
 {
   "name": "railpay-agent-tools",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Payment tools for AI agents: check the budget, quote and pay x402 resources in USDG on Robinhood Chain from a RailPay agent wallet.",
   "license": "MIT",
   "homepage": "https://docs.railpay.app",

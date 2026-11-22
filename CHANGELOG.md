@@ -2,6 +2,23 @@
 
 All notable changes to railpay-agent-tools. Versions follow [Semantic Versioning](https://semver.org); before 1.0.0 a minor version may change the API.
 
+## [0.5.0] - 2026-11-22
+
+### Added
+
+- `confirm(payment)` option: a human-in-the-loop callback asked before every payment, after the limits pass, with the tool, amount, recipient, URL or memo, the seller's description and the session totals. Anything but `true` refuses with `payment_declined` (source `user`) and nothing is signed. The amount stays held while it waits, so parallel calls cannot spend it.
+- Session payment log: every payment gets an id (`pay_1`, `pay_2`, …), returned as `payment_id`. `toolkit.payments()` lists them with tool, status, amount, recipient, URL or memo, transaction and time, and the `onPayment` option is called when one is made or changes status. `session()` also counts payments.
+- `retry_payment_id` input on `railpay_fetch`: after a pending, unaccepted or unanswered payment, resends the same signed payment to the same URL, so the seller can serve the resource without a second charge. A settled payment cannot be reused (`payment_already_used`) and an expired one is refused (`payment_expired`).
+- `railpay-agent-tools/langchain`: `langchainTools(toolkit)` returns LangChain.js `DynamicStructuredTool`s built from the JSON Schema, for `bindTools`, `ToolNode` and `createAgent`. `@langchain/core` ^1 is an optional peer dependency. Tested with `@langchain/core` 1.5.0 and `@langchain/anthropic` 1.6.6.
+- Guide `docs/which-to-use.md`: railpay-mcp vs railpay-agent-tools vs railpay-sdk.
+- Example `examples/langchain.ts` and a LangChain quick start in the README.
+
+### Changed
+
+- `SpendingGuard.authorize()` now takes the `tool` the payment is for.
+- `PaymentInfo` is now `PaymentRecord`, with `id`, `tool`, `url`, `memo` and `at` added. `PaymentInfo` stays as a deprecated alias.
+- When a payment is pending, unaccepted or unanswered, results now point the model to `retry_payment_id` instead of telling it to give up.
+
 ## [0.4.0] - 2026-11-22
 
 ### Added
