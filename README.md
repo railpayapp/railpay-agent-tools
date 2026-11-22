@@ -109,6 +109,28 @@ For the Responses API use `openaiResponsesTools()` and `runOpenAIResponsesToolCa
 
 The adapter imports nothing from `openai`: tools and results are plain objects that type-check as the SDK's types, so `openai` is not a dependency. The dispatchers run only RailPay's tool calls, one after another, and skip the rest, so you can mix RailPay with your own tools and answer the others yourself. Arguments that are not valid JSON get an `invalid_input` result rather than an exception. Tested with `openai` 7.62.0.
 
+### Anthropic (Claude)
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { createRailPayTools } from "railpay-agent-tools";
+import { anthropicTools, runAnthropicToolUses } from "railpay-agent-tools/anthropic";
+
+const railpay = createRailPayTools({ apiKey: process.env.RAILPAY_AGENT_KEY, maxPerCall: "0.001", allowedHosts: ["dapp.railpay.app"] });
+const client = new Anthropic();
+const messages: Anthropic.MessageParam[] = [{ role: "user", content: "What time is it at https://dapp.railpay.app/x402/time? Pay up to 0.001 USDG." }];
+
+for (let step = 0; step < 8; step++) {
+  const response = await client.messages.create({ model: "claude-opus-5-5", max_tokens: 16000, tools: anthropicTools(railpay), messages });
+  messages.push({ role: "assistant", content: response.content });
+  if (response.stop_reason === "pause_turn") continue;
+  if (response.stop_reason !== "tool_use") break;
+  messages.push({ role: "user", content: await runAnthropicToolUses(railpay, response.content) });
+}
+```
+
+`runAnthropicToolUses()` returns the `tool_result` blocks for RailPay's `tool_use` blocks, with `is_error: true` on refusals, and skips other tools so you can answer those in the same user message. Like the OpenAI adapter it imports nothing from `@anthropic-ai/sdk`. It also works with `client.beta.messages`: [examples/anthropic.ts](examples/anthropic.ts) uses the beta client with server-side refusal fallbacks. Tested with `@anthropic-ai/sdk` 1.12.0.
+
 ## Safety model
 
 Every payment has to pass two sets of limits, and the tightest one wins.
