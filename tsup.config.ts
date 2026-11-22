@@ -1,9 +1,10 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  // One entry per subpath export.
+  // One entry per subpath export. The frameworks are optional peer dependencies and stay external.
   entry: {
     index: "src/index.ts",
+    ai: "src/adapters/ai.ts",
   },
   format: ["esm"],
   // railpay-sdk is bundled: it is not on npm, and pnpm refuses URL or git dependencies of a dependency.
