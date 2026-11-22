@@ -1,0 +1,56 @@
+{
+  "name": "railpay-agent-tools",
+  "version": "0.0.0",
+  "description": "Payment tools for AI agents: check the budget, quote and pay x402 resources in USDG on Robinhood Chain from a RailPay agent wallet.",
+  "license": "MIT",
+  "homepage": "https://docs.railpay.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/railpayapp/railpay-agent-tools.git"
+  },
+  "bugs": {
+    "url": "https://github.com/railpayapp/railpay-agent-tools/issues"
+  },
+  "author": "RailPay",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.3"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepare": "tsup"
+  },
+  "keywords": [
+    "railpay",
+    "x402",
+    "usdg",
+    "robinhood-chain",
+    "ai-agents",
+    "agent-tools",
+    "payments",
+    "stablecoin"
+  ],
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "railpay-sdk": "https://github.com/railpayapp/railpay-sdk/releases/download/v0.1.0/railpay-sdk-0.1.0.tgz",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  },
+  "packageManager": "pnpm@12.16.1"
+}
