@@ -23,6 +23,10 @@
     "./ai": {
       "types": "./dist/ai.d.ts",
       "import": "./dist/ai.js"
+    },
+    "./openai": {
+      "types": "./dist/openai.d.ts",
+      "import": "./dist/openai.js"
     }
   },
   "files": [
@@ -49,7 +53,8 @@
     "agent-tools",
     "payments",
     "stablecoin",
-    "ai-sdk"
+    "ai-sdk",
+    "openai"
   ],
   "peerDependencies": {
     "ai": "^7.0.0"
