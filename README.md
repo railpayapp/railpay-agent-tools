@@ -38,6 +38,8 @@ railpay-sdk is bundled into the build, so there are no runtime dependencies. It 
 
 ## Quick start
 
+### Any framework
+
 ```ts
 import { createRailPayTools } from "railpay-agent-tools";
 
@@ -60,6 +62,26 @@ console.log(railpay.session()); // { spent_usdg, reserved_usdg, budget_usdg, rem
 ```
 
 `https://dapp.railpay.app/x402/time` costs 0.001 USDG and returns the server time.
+
+### Vercel AI SDK
+
+```ts
+import { anthropic } from "@ai-sdk/anthropic";
+import { generateText, isStepCount } from "ai";
+import { createRailPayTools } from "railpay-agent-tools";
+import { aiSdkTools } from "railpay-agent-tools/ai";
+
+const railpay = createRailPayTools({ apiKey: process.env.RAILPAY_AGENT_KEY, maxPerCall: "0.001", allowedHosts: ["dapp.railpay.app"] });
+
+const { text } = await generateText({
+  model: anthropic("claude-opus-5-5"),
+  tools: aiSdkTools(railpay),
+  stopWhen: isStepCount(5),
+  prompt: "Check the price of https://dapp.railpay.app/x402/time, pay it if it is 0.001 USDG or less, and tell me the time.",
+});
+```
+
+`aiSdkTools()` builds the tools with the AI SDK's `tool()` and `jsonSchema()`, so no zod schemas are needed. Pass them as `tools` to `generateText` or `streamText`; the model gets the structured result object. Tested with `ai` 7.0.179 and `generateText`. Full example: [examples/ai-sdk.ts](examples/ai-sdk.ts).
 
 ## Safety model
 
@@ -131,7 +153,9 @@ pnpm typecheck && pnpm test && pnpm build
 pnpm smoke   # read-only check against https://dapp.railpay.app, no key, spends nothing
 ```
 
-Tests use a mocked `fetch` for both RailPay and the seller. Nothing in the test suite touches the network.
+Tests use a mocked `fetch` for both RailPay and the seller, and mock models for the framework adapters. Nothing in the test suite touches the network.
+
+The examples in [examples/](examples/) spend real USDG. Run them yourself, with your own keys, after `pnpm build`.
 
 ## Links
 

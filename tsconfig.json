@@ -13,7 +13,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "railpay-agent-tools": ["./src/index.ts"],
+      "railpay-agent-tools/*": ["./src/adapters/*.ts"]
+    }
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "examples"]
 }
